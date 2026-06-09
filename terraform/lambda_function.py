@@ -13,6 +13,11 @@ s3_client = boto3.client('s3')
 sh_client = boto3.client('securityhub')
 
 def lambda_handler(event: dict, context: object) -> dict:
+    """
+    AWS Lambda handler to fetch active CSPM findings from Security Hub 
+    and export them to an S3 bucket in compressed JSON Lines format.
+    Runtime: Python 3.13
+    """
     bucket_name: str | None = os.environ.get('S3_BUCKET_NAME')
     if not bucket_name:
         logger.error("Missing mandatory environment variable: S3_BUCKET_NAME")
