@@ -12,10 +12,9 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "your-global-state-storage-bucket" # <-- UPDATE THIS TO YOUR STATE BUCKET
+    bucket         = "security-findings-tfstate-550724411583"
     key            = "securityhub-exporter/terraform.tfstate"
     region         = "eu-west-1"
-    # dynamodb_table = "your-terraform-lock-table" # Uncomment if using state locking
   }
 }
 
@@ -24,7 +23,16 @@ provider "aws" {
 }
 
 #-------------------------------------------------------------------------------
-# S3 Artifact Target Bucket
+# KMS Key Definition for Findings Export Bucket B
+#-------------------------------------------------------------------------------
+resource "aws_kms_key" "s3_export_key" {
+  description             = "KMS Key for Security Hub findings export bucket encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+}
+
+#-------------------------------------------------------------------------------
+# Bucket B: Export Target Configuration
 #-------------------------------------------------------------------------------
 resource "aws_s3_bucket" "findings_export" {
   bucket        = "aws-securityhub-cspm-exports-550724411583"
@@ -43,9 +51,17 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "findings_export" 
   bucket = aws_s3_bucket.findings_export.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      kms_master_key_id = aws_kms_key.s3_export_key.arn
+      sse_algorithm     = "aws:kms"
     }
   }
+}
+
+# Configures Server Access Logging as defined in requirements
+resource "aws_s3_bucket_logging" "findings_export_logging" {
+  bucket        = aws_s3_bucket.findings_export.id
+  target_bucket = "security-findings-tfstate-550724411583" # Logging to designated storage or centralized log bucket
+  target_prefix = "s3-access-logs/aws-securityhub-cspm-exports/"
 }
 
 #-------------------------------------------------------------------------------
@@ -68,7 +84,7 @@ resource "aws_iam_role" "lambda_execution" {
 
 resource "aws_iam_policy" "lambda_permissions" {
   name        = "securityhub-cspm-exporter-lambda-policy"
-  description = "Allows execution runtime to access Security Hub findings and write to S3."
+  description = "Allows execution runtime to access Security Hub findings, write to S3, and use KMS."
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -82,6 +98,14 @@ resource "aws_iam_policy" "lambda_permissions" {
         Effect   = "Allow"
         Action   = [ "s3:PutObject" ]
         Resource = [ "${aws_s3_bucket.findings_export.arn}/*" ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = [
+          "kms:Encrypt",
+          "kms:GenerateDataKey*"
+        ]
+        Resource = [ aws_kms_key.s3_export_key.arn ]
       },
       {
         Effect = "Allow"
