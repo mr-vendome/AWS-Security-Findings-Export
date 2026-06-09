@@ -11,16 +11,17 @@ terraform {
     }
   }
 
-  import {
-    to = aws_s3_bucket.findings_export
-    id = "aws-securityhub-cspm-exports-550724411583"
-  }
-
   backend "s3" {
     bucket         = "security-findings-tfstate-550724411583"
     key            = "securityhub-exporter/terraform.tfstate"
     region         = "eu-west-1"
   }
+}
+
+# --- PLACE THE IMPORT BLOCK HERE (ROOT LEVEL, OUTSIDE OF TERRAFORM BLOCK) ---
+import {
+  to = aws_s3_bucket.findings_export
+  id = "aws-securityhub-cspm-exports-550724411583"
 }
 
 provider "aws" {
